@@ -1,0 +1,7 @@
+[project]
+name = "hotel-booking-pipeline"
+version = "0.1.0"
+description = "Pipeline Postgres + dbt + Airflow sur le dataset Hotel Booking Demand"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
