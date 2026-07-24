@@ -47,5 +47,19 @@ final AS(
     FROM source
 )
 
-SELECT *
+SELECT
+    ROW_NUMBER() OVER(ORDER BY hotel, arrival_date) AS booking_id,
+    -- booking_id : technical row identifier, no business meaning,
+    -- used as the technical primary key for dbt tests and future joins.
+    *,
+    {{ dbt_utils.generate_surrogate_key(
+        ['hotel', 'arrival_date', 'booking_lead_time_days', 
+        'average_daily_rate', 'agent', 'country', 'reservation_status_date',
+        'booking_changes', 'reserved_room_type', 'children',
+        'adults', 'nights_week', 'nights_weekend', 'market_segment',
+        'days_in_waiting_list']) }} AS duplicate_check_hash
+    -- duplicate_check_hash : ~29% of rows share an identical hash across 15 columns,
+    -- indicating this dataset doesn't provide enough information for a reliable
+    -- individual booking ID (known limitation of the Kaggle dataset, no native ID).
+    -- Column kept for data quality investigation purposes, NOT as a primary key.
 FROM final
