@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_bookings
+    description: "Cleaned and typed booking data, one row per source line. See README for known limitations regarding booking_id (no native business key in the source dataset)."
+    columns:
+
+      - name: booking_id
+        description: "Technical row identifier (ROW_NUMBER), no business meaning. Primary key for tests and joins."
+        tests:
+          - unique
+          - not_null
+
+      - name: hotel
+        description: "Type of hotel the booking was made for: City Hotel (Lisbon) or Resort Hotel (Algarve)."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["City Hotel", "Resort Hotel"]
+
+      - name: deposit_type
+        description: "Type of deposit made by the customer to guarantee the booking (e.g. no deposit, refundable, non-refundable)."
+        tests:
+          - accepted_values:
+              values: ["No Deposit", "Non Refund", "Refundable"]
+
+      - name: customer_type
+        description: "Booking classification based on the nature of the reservation (e.g. transient, group, contract)."
+        tests:
+          - accepted_values:
+              values: ["Contract", "Group", "Transient", "Transient-Party"]
+
+      - name: reservation_status
+        description: "Final outcome of the reservation as of reservation_status_date: whether the guest checked out, canceled, or did not show up."
+        tests:
+          - accepted_values:
+              values: ["Canceled", "Check-Out", "No-Show"]
+
+      - name: meal
+        description: "Meal plan, decoded from source abbreviations (BB, HB, FB, SC)."
+        tests:
+          - accepted_values:
+              values: ["Bed & Breakfast", "Full Board", "Half Board", "Self Catering", "Undefined"]

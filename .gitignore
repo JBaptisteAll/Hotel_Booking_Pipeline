@@ -11,3 +11,6 @@ dbt_project/dbt_packages/
 
 # secrets
 .env
+
+# Assist
+CLAUDE.md

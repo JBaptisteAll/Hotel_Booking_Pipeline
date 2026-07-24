@@ -39,7 +39,16 @@ final AS(
         --column 'company' has 116.000 NULL, decision was made not to keep it
         days_in_waiting_list,
         customer_type,
-        adr AS average_daily_rate,
+        CASE 
+            WHEN adr = 5400 THEN 130
+            -- 5400 → 130 : investigated against the full agent=12 / arrival_date=2016-03-25
+            -- booking group (same hotel), where every other row is priced at 130.
+            -- The 5400 value is inconsistent with the group and treated as a data entry error.
+            WHEN adr = -6.38 THEN 62.28
+            -- -6.38 → 62.28 : investigated against the agent=273 / arrival_date=2017-03-05
+            -- booking group, where 62.28 appears repeatedly among comparable rows.
+            ELSE adr
+        END AS average_daily_rate,
         required_car_parking_spaces,
         total_of_special_requests,
         reservation_status,
