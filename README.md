@@ -1,13 +1,64 @@
 # Hotel Booking Pipeline
 
+```mermaid
+flowchart TD
+    subgraph Sources["Sources"]
+        CSV["hotel_bookings.csv<br/>(Kaggle dataset)"]
+        SEASONS["seed_hotel_seasons.csv<br/>(manual mapping)"]
+    end
+
+    subgraph Seed["dbt seed"]
+        CSV -->|dbt seed| RAW["hotel_bookings<br/>(raw table)"]
+        SEASONS -->|dbt seed| SEASON_TABLE["seed_hotel_seasons<br/>(reference table)"]
+    end
+
+    subgraph Staging["Staging"]
+        RAW --> STG["stg_bookings<br/>(cleaned, typed, deduped)"]
+    end
+
+    subgraph Intermediate["Intermediate"]
+        STG --> INT["int_bookings_with_season<br/>(+ season column)"]
+        SEASON_TABLE --> INT
+    end
+
+    subgraph Tests["dbt tests"]
+        STG -->|ADR >= 0| T1["accepted_range<br/>severity: error"]
+        INT -->|ADR > 4x median<br/>by hotel + season| T2["assert_no_extreme_adr_outliers<br/>severity: warn"]
+    end
+
+    subgraph Marts["Marts (planned)"]
+        INT -.->|next step| MART["mart TBD:<br/>cancellation rate / ADR by month<br/>/ lead time by segment"]
+    end
+
+    subgraph Orchestration["Airflow (planned)"]
+        DAG["DAG: dbt seed → dbt run → dbt test"]
+    end
+
+    Orchestration -.orchestrates.-> Seed
+    Orchestration -.orchestrates.-> Staging
+    Orchestration -.orchestrates.-> Intermediate
+    Orchestration -.orchestrates.-> Tests
+```
+
 Postgres + dbt + Airflow (Docker) pipeline built on the [Hotel Booking Demand](https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand) dataset.
 
 Builds on the dataset and cleaning logic explored in [Hotel_Booking_Analysis](https://github.com/JBaptisteAll/Hotel_Booking_Analysis), to build a productionized pipeline, orchestrated with Docker.
 
 ## Stack
 - Postgres (data warehouse)
-- dbt (transformation, medallion architecture: seed → staging → mart)
+- dbt (transformation, medallion architecture: seed → staging → intermediate → mart)
 - Airflow (orchestration)
+
+## Architecture decisions
+
+### Ingestion: direct load instead of a cloud landing zone
+`hotel_bookings.csv` is currently loaded directly via `dbt seed`, without
+an intermediate cloud storage layer.
+
+**Possible evolution:** a simulated S3 landing zone (LocalStack, S3
+emulated in Docker) could be added later as a v2 to demonstrate a more
+realistic multi-source / versioned ingestion pattern, without requiring a
+real AWS account.
 
 ## Data Quality Notes
 
@@ -31,6 +82,96 @@ key, likely due to group/block bookings sharing identical attributes.
   primary key for dbt tests and joins. No business meaning.
 - `duplicate_check_hash`: the surrogate key described above, kept for future
   data quality exploration, not used as a key.
+
+### Average daily rate (ADR) outliers
+
+Two manual corrections were applied in `stg_bookings` after investigating
+extreme values by comparing each one to its context group (same agent +
+hotel + arrival date):
+- `5400` → `130` (agent 12, City Hotel, 2016-03-25 — all other rows in the
+  same group were at 130)
+- `-6.38` → `62.28` (agent 273, Resort Hotel, 2017-03-05 — 62.28 appears
+  repeatedly in the same group)
+
+To catch similar errors automatically in future data reloads, without
+identifying them row by row each time, two dbt tests were added on
+`average_daily_rate`:
+
+**1. `dbt_utils.accepted_range` (severity: error)** — rejects any negative
+ADR. A negative price is never legitimate for this business, regardless of
+context (even heavily discounted or marketing-funded stays have an ADR
+≥ 0).
+
+**2. Singular test `assert_no_extreme_adr_outliers` (severity: warn)** —
+flags any ADR more than 4x the median ADR of its `hotel` + `season` group
+(see Seasonality below). Kept as a warning rather than a hard failure: some
+legitimately very low or very high ADRs exist (e.g. conventions where the
+event organizer pays and rooms are offered near-free, or contract/group
+rates far below transient pricing) that a purely statistical test cannot
+distinguish from genuine data entry errors. `warn` lets the pipeline keep
+running while surfacing rows worth a manual check.
+
+This test went through several iterations before landing on `hotel +
+season`:
+- Partitioning by `agent + hotel + arrival_date` (day-level) produced
+  groups too small to yield a reliable median (62% of groups had ≤3 rows).
+- Widening to `agent + hotel + week + year` still produced too many false
+  positives, and `agent`/`ADR = 0` values (legitimate free/complementary
+  stays) were polluting group medians.
+- Partitioning by `hotel` alone ignored seasonality: summer bookings
+  (naturally 3-4x pricier, e.g. Resort Hotel July/August) were flagged
+  against a year-round median dragged down by low season.
+- Final approach: `hotel + season` (see below) — wide enough for a stable
+  median, narrow enough to account for the dataset's dominant price driver.
+
+**Known limitation:** the monthly season split doesn't capture short,
+date-specific demand spikes that fall inside a month classified as "Low"
+— most notably New Year's Eve (Dec 30-31), which shows up as false
+positives in this test. Deliberately accepted for this staging-level
+guard-rail; a holiday/event dimension is a candidate for a future mart
+(see below).
+
+## Seasonality reference data
+
+### `seed_hotel_seasons`
+A seed (`seeds/seed_hotel_seasons.csv`) maps each `hotel` + calendar
+`month` (1-12) to a `season` (`High`/`Low`), based on observed monthly
+median ADR (2015-2017, `adr > 0`):
+
+- **City Hotel** (Lisbon): High = April-September, Low = October-March.
+  Pattern likely reflects urban/business tourism plus spring appeal and
+  local events (e.g. Festas de Lisboa in June), rather than a pure beach
+  peak.
+- **Resort Hotel** (Algarve): High = June-September, Low = October-May.
+  Sharper seasonal swing consistent with a beach resort (median ADR ~4x
+  higher in August than in November).
+
+The monthly pattern is stable year over year (2015-2017) even though
+overall price levels rose each year — so the seed doesn't carry a `year`
+dimension. This is a deliberate simplification: the seed structure could
+be extended with a `year` column if the hotel's pricing strategy were to
+change from one year to another.
+
+Thresholds (which months count as High/Low) were set manually for this
+exercise based on observed data, not validated with an actual revenue
+manager — documented here as an assumption, not a ground truth.
+
+### `int_bookings_with_season`
+An intermediate model (`models/intermediate/int_bookings_with_season.sql`)
+joins `stg_bookings` to `seed_hotel_seasons` (on `hotel` + month extracted
+from `arrival_date`), exposing a `season` column reusable across tests,
+future marts, and ad hoc analysis — rather than duplicating the join logic
+in each place that needs seasonality.
+
+## Ideas for a future pricing-consistency mart
+
+Kept out of scope for the staging-level guard-rail test on purpose (see
+above), but noted for a potential dedicated mart:
+- Segment ADR by `customer_type`, `meal`, `market_segment`, and
+  `booking_lead_time_days` to check pricing consistency — this is business
+  logic the staging test deliberately doesn't try to reproduce.
+- Add a holiday/short-event dimension (e.g. New Year's Eve, Dec 30-31) to
+  catch demand spikes that don't align with monthly season boundaries.
 
 ## Note on secrets
 
