@@ -41,3 +41,14 @@ models:
         tests:
           - accepted_values:
               values: ["Bed & Breakfast", "Full Board", "Half Board", "Self Catering", "Undefined"]
+
+      - name: average_daily_rate
+        description: "Average price per day"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+              config:
+                severity: error
+              
