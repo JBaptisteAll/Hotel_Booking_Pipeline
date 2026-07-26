@@ -18,5 +18,7 @@ models:
   hotel_pipeline:
     staging:
       +materialized: view
+    intermediate:
+      +materialized: view
     marts:
       +materialized: table
