@@ -35,7 +35,7 @@ final AS(
         assigned_room_type,
         booking_changes,
         deposit_type,
-        agent, 
+        COALESCE(CAST(agent AS TEXT), 'Direct') AS agent, 
         --column 'company' has 116.000 NULL, decision was made not to keep it
         days_in_waiting_list,
         customer_type,
