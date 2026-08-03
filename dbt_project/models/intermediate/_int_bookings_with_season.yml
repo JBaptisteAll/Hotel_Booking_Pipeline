@@ -1,0 +1,14 @@
+version: 2
+
+models:
+  - name: int_bookings_with_season
+    description: "Intermediate model joining stg_bookings to seed_hotel_seasons on hotel and arrival month, adding a season (High/Low) classification for use in downstream marts and analyses."
+    columns:
+
+      - name: season
+        description: "Seasonality classification (High/Low) for the booking's arrival month, based on observed monthly ADR medians per hotel. Sourced from seed_hotel_seasons."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Low", "High"]

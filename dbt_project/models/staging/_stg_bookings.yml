@@ -16,31 +16,36 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ["City Hotel", "Resort Hotel"]
+              arguments:
+                values: ["City Hotel", "Resort Hotel"]
 
       - name: deposit_type
         description: "Type of deposit made by the customer to guarantee the booking (e.g. no deposit, refundable, non-refundable)."
         tests:
           - accepted_values:
-              values: ["No Deposit", "Non Refund", "Refundable"]
+              arguments:
+                values: ["No Deposit", "Non Refund", "Refundable"]
 
       - name: customer_type
         description: "Booking classification based on the nature of the reservation (e.g. transient, group, contract)."
         tests:
           - accepted_values:
-              values: ["Contract", "Group", "Transient", "Transient-Party"]
+              arguments:
+                values: ["Contract", "Group", "Transient", "Transient-Party"]
 
       - name: reservation_status
         description: "Final outcome of the reservation as of reservation_status_date: whether the guest checked out, canceled, or did not show up."
         tests:
           - accepted_values:
-              values: ["Canceled", "Check-Out", "No-Show"]
+              arguments:
+                values: ["Canceled", "Check-Out", "No-Show"]
 
       - name: meal
         description: "Meal plan, decoded from source abbreviations (BB, HB, FB, SC)."
         tests:
           - accepted_values:
-              values: ["Bed & Breakfast", "Full Board", "Half Board", "Self Catering", "Undefined"]
+              arguments:
+                values: ["Bed & Breakfast", "Full Board", "Half Board", "Self Catering", "Undefined"]
 
       - name: average_daily_rate
         description: "Average price per day"

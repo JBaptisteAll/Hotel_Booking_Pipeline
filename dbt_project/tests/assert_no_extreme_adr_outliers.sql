@@ -1,5 +1,7 @@
 {{ config(severity='warn') }}
 
+-- test singulier outlier supérieur
+
 WITH median_hotel AS (
 	SELECT 
 		hotel, season,
