@@ -1,0 +1,11 @@
+version: 2
+
+models:
+  - name: mart_pricing_consistency
+    description: "Booking-level mart computing ADR deviation from the median of its hotel + season + customer_type group, to surface pricing inconsistencies for revenue management review."
+    columns:
+
+      - name: median_adr_by_group
+        description: "Median average_daily_rate for the booking's hotel + season + customer_type group, computed via PERCENTILE_CONT. NULL would indicate a failed join against the group median calculation."
+        tests:
+          - not_null
