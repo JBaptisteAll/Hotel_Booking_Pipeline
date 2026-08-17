@@ -133,12 +133,51 @@ against `stg_bookings` and fails if they differ. The join key
 silently duplicate booking rows downstream. This test exists to catch that
 class of bug at the source rather than downstream in a mart.
 
-## Ideas for a future pricing-consistency mart
+## Marts
 
-Kept out of scope for the staging-level guard-rail test on purpose (see
-above), but noted for a potential dedicated mart:
-- Segment ADR by `customer_type`, `meal`, `market_segment`, and
-  `booking_lead_time_days` to check pricing consistency — this is business
-  logic the staging test deliberately doesn't try to reproduce.
-- Add a holiday/short-event dimension (e.g. New Year's Eve, Dec 30-31) to
-  catch demand spikes that don't align with monthly season boundaries.
+### `mart_pricing_consistency`
+Implements the idea noted below of segmenting ADR by business dimensions
+beyond the staging-level `hotel + season` guard-rail (see "Average daily
+rate (ADR) outliers" above). Booking-level mart comparing each booking's
+`average_daily_rate` to the median ADR of its `hotel` + `season` +
+`customer_type` group (via `PERCENTILE_CONT`), exposing `adr_diff_absolute`
+and `adr_diff_percent` for revenue management review. `meal` and
+`booking_lead_time_days` are carried through as descriptive columns for
+filtering/context, not (yet) part of the grouping — see "Still open" below.
+Builds directly on `int_bookings_with_season`.
+
+Two tests guard this mart:
+
+**1. Schema test on `median_adr_by_group`** (`_mart_pricing_consistency.yml`)
+— `not_null`. A NULL would mean the median CTE failed to join for that
+booking's `hotel + season + customer_type` group.
+
+**2. Singular test `assert_no_row_duplication_after_median_join`**
+(severity: warn) — compares row counts between `mart_pricing_consistency`
+and `int_bookings_with_season`, the same fan-out guard pattern used for the
+season join (see `assert_no_row_duplication_after_season_join` above):
+guards against the median CTE's `hotel + season + customer_type` join key
+ever producing more than one row per group.
+
+### `mart_cancellation_rate`
+Aggregated mart (one row per `hotel` + `deposit_type` + `season` +
+`leading_booking_group`) computing `cancellation_rate_percent` and each
+group's `share_of_hotel_bookings_percent` within its hotel.
+`leading_booking_group` buckets `booking_lead_time_days` into four bands:
+Last minute (≤15 days), Standard (16-70), Early (71-160), Xtra early (>160).
+
+**Singular test `assert_cancellation_rate_consistency`** (severity: warn)
+— two checks unioned together:
+1. No `cancellation_rate_percent` above 100 — a logical impossibility that
+   would indicate an aggregation bug (e.g. a fan-out before the `SUM`).
+2. `share_of_hotel_bookings_percent` sums to 100 (99.9-100.1 tolerance for
+   rounding) per hotel — confirms the groups fully partition each hotel's
+   bookings without double-counting or gaps.
+
+### Still open
+- Segmenting ADR by `meal` and `market_segment` in
+  `mart_pricing_consistency` (currently exposed as descriptive columns
+  only, not part of the grouping).
+- A holiday/short-event dimension (e.g. New Year's Eve, Dec 30-31) to catch
+  demand spikes that don't align with monthly season boundaries, in either
+  mart.

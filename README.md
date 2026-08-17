@@ -28,8 +28,15 @@ flowchart TD
         INT -->|row count preserved<br/>after season LEFT JOIN| T4["assert_no_row_duplication_after_season_join<br/>severity: warn"]
     end
 
-    subgraph Marts["Marts (planned)"]
-        INT -.->|next step| MART["mart TBD:<br/>cancellation rate / ADR by month<br/>/ lead time by segment"]
+    subgraph Marts["Marts"]
+        INT --> MART_PRICE["mart_pricing_consistency<br/>(ADR vs hotel+season+customer_type median)"]
+        INT --> MART_CANCEL["mart_cancellation_rate<br/>(cancellation % by hotel/deposit/season/lead-time band)"]
+    end
+
+    subgraph MartTests["dbt tests (marts)"]
+        MART_PRICE -->|median_adr_by_group<br/>not_null| T5["schema test<br/>severity: error"]
+        MART_PRICE -->|row count preserved<br/>after median JOIN| T6["assert_no_row_duplication_after_median_join<br/>severity: warn"]
+        MART_CANCEL -->|rate <= 100% +<br/>share sums to 100%| T7["assert_cancellation_rate_consistency<br/>severity: warn"]
     end
 
     subgraph Orchestration["Airflow (planned)"]
@@ -40,6 +47,8 @@ flowchart TD
     Orchestration -.orchestrates.-> Staging
     Orchestration -.orchestrates.-> Intermediate
     Orchestration -.orchestrates.-> Tests
+    Orchestration -.orchestrates.-> Marts
+    Orchestration -.orchestrates.-> MartTests
 ```
 
 Postgres + dbt + Airflow (Docker) pipeline built on the [Hotel Booking Demand](https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand) dataset.
@@ -70,12 +79,15 @@ ADR beyond 4x the median for its `hotel` + `season` group, using a
 seasonality seed (`seed_hotel_seasons`) and the `int_bookings_with_season`
 model. [Details →](docs/decisions.md#data-quality-notes)
 
-## Ideas for a future pricing-consistency mart
-
-Segmenting ADR by `customer_type`/`meal`/`market_segment`/lead time, and
-adding a holiday/event dimension (e.g. New Year's Eve) are candidates for
-a dedicated mart, out of scope for the current staging-level guard-rails.
-[Details →](docs/decisions.md#ideas-for-a-future-pricing-consistency-mart)
+### Marts
+`mart_pricing_consistency` compares each booking's ADR to the median of its
+`hotel` + `season` + `customer_type` group, surfacing pricing deviations for
+revenue management review. `mart_cancellation_rate` aggregates cancellation
+rate and each group's share of bookings by `hotel` + `deposit_type` +
+`season` + lead-time band (Last minute / Standard / Early / Xtra early).
+Both are guarded by warn-severity singular tests checking row-count parity
+and result sanity (rate ≤ 100%, shares sum to 100%).
+[Details →](docs/decisions.md#marts)
 
 ## Note on secrets
 
