@@ -19,6 +19,14 @@ models:
               arguments:
                 values: ["City Hotel", "Resort Hotel"]
 
+      - name: is_canceled
+        description: "Flag indicating whether the booking was canceled (1) or not (0)"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+
       - name: deposit_type
         description: "Type of deposit made by the customer to guarantee the booking (e.g. no deposit, refundable, non-refundable)."
         tests:
