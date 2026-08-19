@@ -23,7 +23,7 @@ flowchart TD
 
     subgraph Tests["dbt tests"]
         STG -->|ADR >= 0| T1["accepted_range<br/>severity: error"]
-        STG -->|is_canceled not_null +<br/>accepted_values [0,1]| T1b["schema tests on is_canceled<br/>severity: error"]
+        STG -->|is_canceled not_null +<br/>accepted_values 0 or 1| T1b["schema tests on is_canceled<br/>severity: error"]
         INT -->|ADR > 4x median<br/>by hotel + season| T2["assert_no_extreme_adr_outliers<br/>severity: warn"]
         INT -->|season not_null +<br/>accepted_values| T3["schema tests on season<br/>severity: error"]
         INT -->|row count preserved<br/>after season LEFT JOIN| T4["assert_no_row_duplication_after_season_join<br/>severity: warn"]
