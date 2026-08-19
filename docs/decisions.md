@@ -13,6 +13,16 @@ real AWS account.
 
 ## Data Quality Notes
 
+### `is_canceled` schema tests
+Both `mart_cancellation_rate` and `mart_revenue` branch on `is_canceled`
+with `CASE WHEN is_canceled = 0 / 1` logic to split consumed vs. canceled
+bookings, guests, nights, and revenue. A `NULL` or unexpected value (e.g.
+`2`) wouldn't error, it would just silently fall through to neither branch
+(or the `ELSE`), quietly undercounting a mart's totals. `not_null` and
+`accepted_values: [0, 1]` on `stg_bookings.is_canceled`
+(`models/staging/_stg_bookings.yml`) catch that at the source rather than
+as a downstream aggregate discrepancy.
+
 ### Missing native booking ID
 The Kaggle Hotel Booking Demand dataset does not include a unique booking
 identifier — a known limitation of this public dataset.
@@ -174,6 +184,44 @@ Last minute (≤15 days), Standard (16-70), Early (71-160), Xtra early (>160).
    rounding) per hotel — confirms the groups fully partition each hotel's
    bookings without double-counting or gaps.
 
+### `mart_revenue`
+Time-series mart (one row per `hotel` + `arrival_month`) tracking booking,
+guest, night, and revenue volumes, split into booked / consumed / canceled
+via `is_canceled` (see `is_canceled` schema tests above, which guard the
+`CASE WHEN` logic this mart relies on). Exposes:
+- `avg_booking_lead_time_days`.
+- `total_bookings` / `_consumed` / `_canceled` (booking counts).
+- `total_guests_booked` / `_consumed` / `_canceled` (`adults + children +
+  babies`).
+- `total_nights_booked` / `_consumed` / `_canceled` (`nights_week +
+  nights_weekend`), plus `nights_cancellation_rate_percent`.
+- `total_revenue_potential` / `_realized` / `_missed` (`average_daily_rate
+  * nights`), plus `cancellation_rate_percent`.
+
+Builds directly on `int_bookings_with_season` (`season` is not currently
+used in the grouping, only `hotel` + month — a candidate to reconsider if
+season-level revenue tracking is needed later).
+
+**Note:** this mart's `cancellation_rate_percent` is *revenue-based*
+(missed ÷ potential revenue), unlike `mart_cancellation_rate`'s column of
+the same name, which is *booking-count-based* (canceled ÷ total bookings).
+The two aren't directly comparable — a naming collision worth knowing about
+before joining or charting them side by side.
+
+**Singular test `assert_no_high_cancellation_months`** (severity: warn) —
+two checks unioned together:
+1. `total_bookings_canceled > total_bookings_consumed` — a month where more
+   bookings were canceled than honored, worth a manual look regardless of
+   the statistical threshold below.
+2. `cancellation_rate_percent` above the 90th percentile of that same
+   column, computed per `hotel` (`PERCENTILE_CONT(0.9)`), to surface
+   outlier months without a hardcoded threshold.
+
+`warn` severity: unlike the row-count-parity tests above, this isn't
+guarding against a join/aggregation bug, it's intentionally surfacing
+months worth a business review, some of which may be legitimate (e.g. a
+known low-demand month, a policy change, external events).
+
 ### Still open
 - Segmenting ADR by `meal` and `market_segment` in
   `mart_pricing_consistency` (currently exposed as descriptive columns
@@ -181,3 +229,5 @@ Last minute (≤15 days), Standard (16-70), Early (71-160), Xtra early (>160).
 - A holiday/short-event dimension (e.g. New Year's Eve, Dec 30-31) to catch
   demand spikes that don't align with monthly season boundaries, in either
   mart.
+- `mart_revenue` has no `_mart_revenue.yml` schema file yet (no `not_null`/
+  `unique` schema tests on its output columns), unlike the other two marts.

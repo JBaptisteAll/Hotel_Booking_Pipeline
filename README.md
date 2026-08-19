@@ -23,6 +23,7 @@ flowchart TD
 
     subgraph Tests["dbt tests"]
         STG -->|ADR >= 0| T1["accepted_range<br/>severity: error"]
+        STG -->|is_canceled not_null +<br/>accepted_values [0,1]| T1b["schema tests on is_canceled<br/>severity: error"]
         INT -->|ADR > 4x median<br/>by hotel + season| T2["assert_no_extreme_adr_outliers<br/>severity: warn"]
         INT -->|season not_null +<br/>accepted_values| T3["schema tests on season<br/>severity: error"]
         INT -->|row count preserved<br/>after season LEFT JOIN| T4["assert_no_row_duplication_after_season_join<br/>severity: warn"]
@@ -31,12 +32,14 @@ flowchart TD
     subgraph Marts["Marts"]
         INT --> MART_PRICE["mart_pricing_consistency<br/>(ADR vs hotel+season+customer_type median)"]
         INT --> MART_CANCEL["mart_cancellation_rate<br/>(cancellation % by hotel/deposit/season/lead-time band)"]
+        INT --> MART_REVENUE["mart_revenue<br/>(revenue &amp; cancellation by hotel + arrival month)"]
     end
 
     subgraph MartTests["dbt tests (marts)"]
         MART_PRICE -->|median_adr_by_group<br/>not_null| T5["schema test<br/>severity: error"]
         MART_PRICE -->|row count preserved<br/>after median JOIN| T6["assert_no_row_duplication_after_median_join<br/>severity: warn"]
         MART_CANCEL -->|rate <= 100% +<br/>share sums to 100%| T7["assert_cancellation_rate_consistency<br/>severity: warn"]
+        MART_REVENUE -->|canceled > consumed bookings<br/>or rate > hotel's p90| T8["assert_no_high_cancellation_months<br/>severity: warn"]
     end
 
     subgraph Orchestration["Airflow (planned)"]
@@ -77,16 +80,26 @@ kept only for investigation. ADR outliers are guarded by an
 `accepted_range` test (no negative prices) and a singular test flagging
 ADR beyond 4x the median for its `hotel` + `season` group, using a
 seasonality seed (`seed_hotel_seasons`) and the `int_bookings_with_season`
-model. [Details →](docs/decisions.md#data-quality-notes)
+model. `is_canceled` is guarded by `not_null` + `accepted_values ([0, 1])`,
+since downstream marts branch on it with `CASE WHEN` logic that would
+silently miscount on an unexpected value. [Details →](docs/decisions.md#data-quality-notes)
 
 ### Marts
 `mart_pricing_consistency` compares each booking's ADR to the median of its
 `hotel` + `season` + `customer_type` group, surfacing pricing deviations for
 revenue management review. `mart_cancellation_rate` aggregates cancellation
-rate and each group's share of bookings by `hotel` + `deposit_type` +
-`season` + lead-time band (Last minute / Standard / Early / Xtra early).
-Both are guarded by warn-severity singular tests checking row-count parity
-and result sanity (rate ≤ 100%, shares sum to 100%).
+rate (share of bookings) and each group's share of bookings by `hotel` +
+`deposit_type` + `season` + lead-time band (Last minute / Standard / Early /
+Xtra early). `mart_revenue` aggregates booked vs. consumed vs. canceled
+bookings, guests, nights and revenue by `hotel` + arrival month, plus a
+*revenue-based* `cancellation_rate_percent` (missed ÷ potential revenue —
+not directly comparable to `mart_cancellation_rate`'s booking-count-based
+rate of the same name).
+All three are guarded by warn-severity singular tests: row-count parity for
+`mart_pricing_consistency`, result sanity (rate ≤ 100%, shares sum to 100%)
+for `mart_cancellation_rate`, and an outlier check for `mart_revenue`
+flagging hotel-months with more canceled than consumed bookings or a
+cancellation rate above that hotel's 90th percentile.
 [Details →](docs/decisions.md#marts)
 
 ## Note on secrets
