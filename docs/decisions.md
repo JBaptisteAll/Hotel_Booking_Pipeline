@@ -229,5 +229,11 @@ known low-demand month, a policy change, external events).
 - A holiday/short-event dimension (e.g. New Year's Eve, Dec 30-31) to catch
   demand spikes that don't align with monthly season boundaries, in either
   mart.
-- `mart_revenue` has no `_mart_revenue.yml` schema file yet (no `not_null`/
-  `unique` schema tests on its output columns), unlike the other two marts.
+- `mart_revenue` and `mart_cancellation_rate` deliberately have no schema
+  tests file: both are straight `GROUP BY` aggregations with no `JOIN`,
+  unlike `mart_pricing_consistency` (whose `not_null` on
+  `median_adr_by_group` guards a real risk, its join key includes
+  `customer_type`, not `not_null`-tested upstream). Other candidate tests
+  (`unique` on the grain, `accepted_range` on percentages, `consumed ≤
+  booked` checks) are already guaranteed by upstream `is_canceled` /
+  `average_daily_rate` tests.
