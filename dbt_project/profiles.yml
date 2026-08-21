@@ -10,3 +10,13 @@ hotel_pipeline:
       dbname: hotel_dw
       schema: public
       threads: 4
+
+    docker:
+      type: postgres
+      host: hotel_postgres
+      port: 5432
+      user: dbt_user
+      password: dbt_password
+      dbname: hotel_dw
+      schema: public
+      threads: 4

@@ -13,3 +13,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - hotel_pipeline_network
+
+networks:
+  hotel_pipeline_network:
+    name: hotel_pipeline_network
