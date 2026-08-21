@@ -11,6 +11,7 @@ dbt_project/dbt_packages/
 
 # airflow
 airflow/logs/
+airflow/config/
 
 # secrets
 .env
