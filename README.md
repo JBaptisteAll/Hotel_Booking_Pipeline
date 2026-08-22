@@ -64,14 +64,14 @@ Builds on the dataset and cleaning logic explored in [Hotel_Booking_Analysis](ht
 
 ```mermaid
 flowchart TD
-    EXT["Poste Windows<br/>localhost:5433"]
+    EXT["Windows host<br/>localhost:5433"]
 
     subgraph ROOT["docker-compose.yml"]
         PG[("hotel_postgres<br/>Postgres 16 — hotel_dw")]
     end
 
     subgraph AIRFLOW["airflow/docker-compose.yaml"]
-        SCHED["Airflow<br/>scheduler + dbt intégré"]
+        SCHED["Airflow<br/>scheduler + dbt integrated"]
         AFPG[("airflow-postgres<br/>metadata")]
     end
 
@@ -79,9 +79,9 @@ flowchart TD
     SCHED -->|"dbt run/test<br/>--target docker"| PG
     SCHED --- AFPG
 
-    ROOT -.->|"réseau partagé<br/>hotel_pipeline_network"| AIRFLOW
+    ROOT -.->|"shared network<br/>hotel_pipeline_network"| AIRFLOW
 
-    OUT["Marts dans hotel_dw<br/>pricing · cancellation · revenue"]
+    OUT["Marts in hotel_dw<br/>pricing · cancellation · revenue"]
     PG --> OUT
 
     classDef service fill:#fde9d9,stroke:#2e8b8b,stroke-width:2px,color:#000
