@@ -42,8 +42,8 @@ flowchart TD
         MART_REVENUE -->|canceled > consumed bookings<br/>or rate > hotel's p90| T8["assert_no_high_cancellation_months<br/>severity: warn"]
     end
 
-    subgraph Orchestration["Airflow (planned)"]
-        DAG["DAG: dbt seed → dbt run → dbt test"]
+    subgraph Orchestration["Airflow (hotel_booking_pipeline DAG)"]
+        DAG["dbt seed → run+test staging → run+test intermediate<br/>→ run+test marts (parallel)<br/>schedule: every 2h, LocalExecutor"]
     end
 
     Orchestration -.orchestrates.-> Seed
@@ -56,14 +56,49 @@ flowchart TD
 
 Postgres + dbt + Airflow (Docker) pipeline built on the [Hotel Booking Demand](https://www.kaggle.com/datasets/jessemostipak/hotel-booking-demand) dataset.
 
-Builds on the dataset and cleaning logic explored in [Hotel_Booking_Analysis](https://github.com/JBaptisteAll/Hotel_Booking_Analysis), to build a productionized pipeline, orchestrated with Docker.
+Builds on the dataset and cleaning logic explored in [Hotel_Booking_Analysis](https://github.com/JBaptisteAll/Hotel_Booking_Analysis), to build a productionized pipeline, orchestrated with Docker and Airflow.
 
 📄 See [docs/decisions.md](docs/decisions.md) for the full reasoning behind these architecture and testing decisions.
+
+## Infrastructure architecture
+
+```mermaid
+flowchart TD
+    EXT["Poste Windows<br/>localhost:5433"]
+
+    subgraph ROOT["docker-compose.yml"]
+        PG[("hotel_postgres<br/>Postgres 16 — hotel_dw")]
+    end
+
+    subgraph AIRFLOW["airflow/docker-compose.yaml"]
+        SCHED["Airflow<br/>scheduler + dbt intégré"]
+        AFPG[("airflow-postgres<br/>metadata")]
+    end
+
+    EXT -->|"port 5433"| PG
+    SCHED -->|"dbt run/test<br/>--target docker"| PG
+    SCHED --- AFPG
+
+    ROOT -.->|"réseau partagé<br/>hotel_pipeline_network"| AIRFLOW
+
+    OUT["Marts dans hotel_dw<br/>pricing · cancellation · revenue"]
+    PG --> OUT
+
+    classDef service fill:#fde9d9,stroke:#2e8b8b,stroke-width:2px,color:#000
+    class PG,SCHED,AFPG,EXT,OUT service
+```
+
+Two separate Docker Compose stacks, connected by a named external network
+(`hotel_pipeline_network`) created by the root compose file and joined by
+the Airflow one. `hotel_postgres` (data) and `airflow-postgres` (Airflow
+metadata) are kept deliberately separate — an earlier session hit a service
+name collision when both were named `postgres` on the same network.
+[Details →](docs/decisions.md#docker-stack-localexecutor-custom-image-shared-network)
 
 ## Stack
 - Postgres (data warehouse)
 - dbt (transformation, medallion architecture: seed → staging → intermediate → mart)
-- Airflow (orchestration)
+- Airflow (orchestration, LocalExecutor, custom dbt-enabled image, Dockerized)
 
 ## Architecture decisions
 
@@ -102,6 +137,24 @@ flagging hotel-months with more canceled than consumed bookings or a
 cancellation rate above that hotel's 90th percentile.
 [Details →](docs/decisions.md#marts)
 
+### Orchestration
+The `hotel_booking_pipeline` DAG (`airflow/dags/hotel_booking_pipeline.py`)
+runs `dbt seed` → run+test `stg_bookings` → run+test
+`int_bookings_with_season` → run+test each mart, each `run`/`test` step as
+its own `BashOperator`. The three marts branch out in parallel from
+`test_intermediate`, so a failure in one mart doesn't block the others.
+Airflow runs as its own Dockerized stack
+(`airflow/docker-compose.yaml`, LocalExecutor, a custom image extending
+`apache/airflow:3.3.1` with `dbt-core`/`dbt-postgres` installed), sharing
+the `hotel_pipeline_network` Docker network with the `hotel_postgres`
+container so tasks connect via the `docker` profile target
+(`profiles.yml`) instead of the host-mapped port used for local `dbt`
+runs. Scheduled every 2 hours (`0 */2 * * *`); DAGs are paused at creation,
+so a fresh deploy needs a manual unpause in the UI before it starts
+running. [Details →](docs/decisions.md#orchestration-airflow)
+
 ## Note on secrets
 
 Postgres credentials are intentionally hardcoded in `docker-compose.yml` / `profiles.yml`: local dev environment, database not exposed, no sensitive data involved. In a production context, these would be moved to environment variables or a secrets manager (e.g. Docker secrets, AWS Secrets Manager) rather than committed in plain text.
+
+Airflow's `FERNET_KEY` and `AIRFLOW_UID` live in `airflow/.env`, which is gitignored (not hardcoded like the Postgres credentials above, since Airflow generates/expects this file per environment). `airflow/config/` and `airflow/logs/` are gitignored for the same reason: generated at container startup, not part of the source-controlled setup.

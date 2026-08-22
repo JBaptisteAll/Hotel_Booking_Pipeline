@@ -237,3 +237,76 @@ known low-demand month, a policy change, external events).
   (`unique` on the grain, `accepted_range` on percentages, `consumed ≤
   booked` checks) are already guaranteed by upstream `is_canceled` /
   `average_daily_rate` tests.
+
+## Orchestration: Airflow
+
+### DAG structure
+`airflow/dags/hotel_booking_pipeline.py` defines `hotel_booking_pipeline`,
+mirroring the medallion dependency order already enforced by dbt's own DAG,
+but made explicit so each layer's tests gate the next layer's run rather
+than letting a bad `staging` row silently flow into `marts` before anyone
+notices:
+
+```
+dbt_seed >> run_staging >> test_staging >> run_intermediate >> test_intermediate
+test_intermediate >> run_mart_pricing_consistency >> test_mart_pricing_consistency
+test_intermediate >> run_mart_cancellation_rate  >> test_mart_cancellation_rate
+test_intermediate >> run_mart_revenue            >> test_mart_revenue
+```
+
+Each layer is `run` then `test` as two separate `BashOperator` tasks
+(rather than one combined task) so a failed test is visible as its own
+task in the Airflow UI, distinct from a failed run. The three marts fan out
+in parallel from `test_intermediate` since they share no dependency on
+each other, only on `int_bookings_with_season`. Each `dbt test` call passes
+`--indirect-selection=cautious` so selecting one model's tests doesn't
+also pull in tests belonging to its parents/children through dbt's default
+graph-based indirect selection, keeping each Airflow task scoped to
+exactly the layer it represents.
+
+**Retries:** `retries: 1`, `retry_delay: 5 minutes` (DAG `default_args`) —
+a single automatic retry covers transient failures (e.g. Postgres briefly
+unreachable during container startup) without masking a genuinely broken
+model behind repeated retries.
+
+**Schedule:** `0 */2 * * *` (every 2 hours), `catchup=False` so a DAG that
+was paused doesn't backfill every missed interval on unpause. Airflow's
+`AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION` is set to `true`
+(`airflow/docker-compose.yaml`), so a fresh deploy of this DAG starts
+paused and needs a manual unpause in the UI — a deliberate safety default
+for a local/demo setup rather than a production cadence choice.
+
+### Docker stack: LocalExecutor, custom image, shared network
+Airflow runs as its own `docker-compose.yaml` stack under `airflow/`,
+separate from the root `docker-compose.yml` that runs Postgres. It's based
+on Airflow's official quick-start compose file, with three changes:
+
+1. **Custom image** (`airflow/Dockerfile`) extends `apache/airflow:3.3.1`
+   and installs `dbt-core`/`dbt-postgres`
+   (`airflow/requirements-dbt.txt`) as the `airflow` user, not `root` —
+   packages need to be importable by the user the scheduler/worker
+   processes actually run as. This lets `BashOperator` tasks call `dbt`
+   directly inside the Airflow containers, instead of shelling out to a
+   separate dbt container or installing dbt at every container startup via
+   `_PIP_ADDITIONAL_REQUIREMENTS` (explicitly a quick-check-only mechanism
+   per Airflow's own compose file comments, not meant for routine use).
+2. **`LocalExecutor`** instead of the default `CeleryExecutor` (which the
+   stock compose file is templated for, including a Redis service):
+   single-node local dev, no need for Celery's distributed worker queue.
+   Redis and the `airflow-worker`/`flower` services from the stock
+   template were dropped along with it.
+3. **Shared external network** `hotel_pipeline_network` (declared
+   `external: true` in `airflow/docker-compose.yaml`, and named — not
+   auto-generated — in the root `docker-compose.yml`) connects the Airflow
+   containers to `hotel_postgres` by container name. This is why
+   `profiles.yml` has a second `docker` target (`host: hotel_postgres`,
+   port `5432`) alongside the existing `dev` target (`host: localhost`,
+   port `5433`): Airflow tasks resolve the Postgres container by its
+   Docker DNS name over the shared network, while a local `dbt run` from
+   the host still needs the port mapped to `localhost`. The DAG passes
+   `--target docker` on every dbt call to select it explicitly.
+
+**Known limitation:** the two docker-compose files must be started in the
+right order (`docker compose up -d` at the repo root first, then in
+`airflow/`) since the network is created by the root compose file and only
+referenced (`external: true`) by the Airflow one.
