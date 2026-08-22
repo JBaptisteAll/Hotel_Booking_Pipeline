@@ -22,7 +22,7 @@ with DAG(
     dag_id="hotel_booking_pipeline",
     description="Orchestrates the Hotel Booking dbt pipeline (seed -> staging -> intermediate -> marts)",
     default_args=default_args,
-    schedule=None,  # manual trigger only, for now
+    schedule="0 */2 * * *",  # every 2 hours, on the hour
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     tags=["dbt", "hotel_booking_pipeline"],
