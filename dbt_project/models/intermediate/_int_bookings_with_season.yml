@@ -12,3 +12,7 @@ models:
           - accepted_values:
               arguments:
                 values: ["Low", "High"]
+
+      # All other columns (booking_id, hotel, is_canceled, average_daily_rate, etc.)
+      # pass through unchanged from stg_bookings via `b.*`.
+      # See stg_bookings.yml for their descriptions and tests.

@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: mart_revenue
+    description: "Monthly revenue mart at hotel + arrival_month grain, breaking down potential, realized and missed revenue, along with booking, guest and night counts, for financial and revenue management reporting."
+    columns:
+
+      - name: hotel
+        description: "Type of hotel. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: arrival_month
+        description: "First day of the arrival month, truncated from arrival_date. Grain of this mart together with hotel."
+
+      - name: avg_booking_lead_time_days
+        description: "Average booking_lead_time_days across all bookings in this hotel + arrival_month group."
+
+      - name: total_bookings
+        description: "Total number of bookings (canceled or not) for this hotel + arrival_month group."
+
+      - name: total_bookings_consumed
+        description: "Number of non-canceled bookings for this hotel + arrival_month group."
+
+      - name: total_bookings_canceled
+        description: "Number of canceled bookings for this hotel + arrival_month group."
+
+      - name: total_guests_booked
+        description: "Total number of guests (adults + children + babies) booked, canceled or not, for this hotel + arrival_month group."
+
+      - name: total_guests_consumed
+        description: "Total number of guests (adults + children + babies) from non-canceled bookings for this hotel + arrival_month group."
+
+      - name: total_guests_canceled
+        description: "Total number of guests (adults + children + babies) from canceled bookings for this hotel + arrival_month group."
+
+      - name: total_nights_booked
+        description: "Total number of nights (weekend + week) booked, canceled or not, for this hotel + arrival_month group."
+
+      - name: total_nights_consumed
+        description: "Total number of nights (weekend + week) from non-canceled bookings for this hotel + arrival_month group."
+
+      - name: total_nights_canceled
+        description: "Total number of nights (weekend + week) from canceled bookings for this hotel + arrival_month group."
+
+      - name: nights_cancellation_rate_percent
+        description: "Percentage of total_nights_booked that were canceled, for this hotel + arrival_month group."
+
+      - name: total_revenue_potential
+        description: "Total potential revenue (average_daily_rate * total nights) across all bookings, canceled or not, for this hotel + arrival_month group."
+
+      - name: total_revenue_realized
+        description: "Revenue actually realized (average_daily_rate * nights) from non-canceled bookings for this hotel + arrival_month group."
+
+      - name: total_revenue_missed
+        description: "Revenue lost to cancellations (average_daily_rate * nights) for this hotel + arrival_month group."
+
+      - name: cancellation_rate_percent
+        description: "Percentage of total_revenue_potential lost to cancellations (total_revenue_missed / total_revenue_potential * 100), for this hotel + arrival_month group."

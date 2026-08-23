@@ -27,26 +27,26 @@ models:
               arguments:
                 values: [0, 1]
 
-      - name: deposit_type
-        description: "Type of deposit made by the customer to guarantee the booking (e.g. no deposit, refundable, non-refundable)."
-        tests:
-          - accepted_values:
-              arguments:
-                values: ["No Deposit", "Non Refund", "Refundable"]
+      - name: booking_lead_time_days
+        description: "Number of days elapsed between the booking date and the arrival date. Renamed from source column 'lead_time'."
 
-      - name: customer_type
-        description: "Booking classification based on the nature of the reservation (e.g. transient, group, contract)."
-        tests:
-          - accepted_values:
-              arguments:
-                values: ["Contract", "Group", "Transient", "Transient-Party"]
+      - name: arrival_date
+        description: "Booking's arrival date, reconstructed from the source year, month name, and day-of-month columns."
 
-      - name: reservation_status
-        description: "Final outcome of the reservation as of reservation_status_date: whether the guest checked out, canceled, or did not show up."
-        tests:
-          - accepted_values:
-              arguments:
-                values: ["Canceled", "Check-Out", "No-Show"]
+      - name: nights_weekend
+        description: "Number of weekend nights (Saturday, Sunday) included in the stay. Renamed from source column 'stays_in_weekend_nights'."
+
+      - name: nights_week
+        description: "Number of week nights (Monday to Friday) included in the stay. Renamed from source column 'stays_in_week_nights'."
+
+      - name: adults
+        description: "Number of adults included in the booking."
+
+      - name: children
+        description: "Number of children included in the booking. Source 'NA' text values coalesced to 0. Note: contains unusually high outlier values (up to 10), knowingly kept for investigation at mart level rather than filtered here."
+
+      - name: babies
+        description: "Number of babies included in the booking. Note: contains unusually high outlier values (up to 9), knowingly kept for investigation at mart level rather than filtered here."
 
       - name: meal
         description: "Meal plan, decoded from source abbreviations (BB, HB, FB, SC)."
@@ -55,8 +55,55 @@ models:
               arguments:
                 values: ["Bed & Breakfast", "Full Board", "Half Board", "Self Catering", "Undefined"]
 
+      - name: country
+        description: "Guest's country of origin, as an ISO country code. Contains ~488 NULL values, not imputed."
+
+      - name: market_segment
+        description: "Market segment designation of the booking (e.g. Online TA, Offline TA/TO, Direct, Corporate, Groups, Complementary)."
+
+      - name: distribution_channel
+        description: "Booking distribution channel (e.g. TA/TO, Direct, Corporate)."
+
+      - name: is_repeated_guest
+        description: "Flag indicating whether the booking name was made by a repeated guest (1) or not (0)."
+
+      - name: previous_bookings_canceled
+        description: "Number of previous bookings canceled by the customer prior to the current booking. Renamed from source column 'previous_cancellations'."
+
+      - name: previous_bookings_completed
+        description: "Number of previous bookings not canceled by the customer prior to the current booking. Renamed from source column 'previous_bookings_not_canceled'."
+
+      - name: reserved_room_type
+        description: "Code of room type originally reserved. Codes are anonymized in the source dataset for privacy reasons."
+
+      - name: assigned_room_type
+        description: "Code of room type actually assigned at check-in, which may differ from the reserved type (e.g. due to overbooking or operational reassignment)."
+
+      - name: booking_changes
+        description: "Number of changes or amendments made to the booking from the moment it was entered into the system until check-in or cancellation."
+
+      - name: deposit_type
+        description: "Type of deposit made by the customer to guarantee the booking (e.g. no deposit, refundable, non-refundable)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["No Deposit", "Non Refund", "Refundable"]
+
+      - name: agent
+        description: "ID of the travel agency that made the booking, cast to text. Missing values coalesced to 'Direct' to represent bookings made without an intermediary agent."
+
+      - name: days_in_waiting_list
+        description: "Number of days the booking stayed on the waiting list before being confirmed to the customer."
+
+      - name: customer_type
+        description: "Booking classification based on the nature of the reservation (e.g. transient, group, contract)."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["Contract", "Group", "Transient", "Transient-Party"]
+
       - name: average_daily_rate
-        description: "Average price per day"
+        description: "Average price per day. Two data-entry errors corrected at this layer against comparable same-group bookings: 5400 -> 130 and -6.38 -> 62.28 (see inline SQL comments for the investigation)."
         tests:
           - not_null
           - dbt_utils.accepted_range:
@@ -65,4 +112,22 @@ models:
                 inclusive: true
               config:
                 severity: error
-              
+
+      - name: required_car_parking_spaces
+        description: "Number of car parking spaces required by the customer."
+
+      - name: total_of_special_requests
+        description: "Number of special requests made by the customer (e.g. twin bed, high floor)."
+
+      - name: reservation_status
+        description: "Final outcome of the reservation as of reservation_status_date: whether the guest checked out, canceled, or did not show up."
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["Canceled", "Check-Out", "No-Show"]
+
+      - name: reservation_status_date
+        description: "Date at which the last reservation status was recorded (checkout date, cancellation date, or no-show date)."
+
+      - name: duplicate_check_hash
+        description: "Surrogate key hashed from 15 booking attributes, used to investigate potential duplicate rows. NOT a reliable business primary key: ~29% of rows share an identical hash, reflecting the absence of a native booking ID in the source dataset."

@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: mart_cancellation_rate
+    description: "Aggregated mart computing cancellation rates by lead time segment, hotel, deposit_type and season, to surface cancellation risk patterns for operational and revenue management review."
+    columns:
+
+      - name: leading_booking_group
+        description: "Lead time segment the booking falls into, based on booking_lead_time_days: 'Last minute' (<=15 days), 'Standard' (16-70 days), 'Early' (71-160 days), 'Xtra early' (>160 days)."
+
+      - name: hotel
+        description: "Type of hotel. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: deposit_type
+        description: "Type of deposit made by the customer. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: season
+        description: "Seasonality classification (High/Low) for the booking's arrival month. Inherited from int_bookings_with_season."
+
+      - name: cancelled_bookings
+        description: "Number of canceled bookings within this leading_booking_group + hotel + deposit_type + season combination."
+
+      - name: total_nb_bookings
+        description: "Total number of bookings (canceled or not) within this leading_booking_group + hotel + deposit_type + season combination."
+
+      - name: cancellation_rate_percent
+        description: "Cancellation rate, in percent, computed as cancelled_bookings / total_nb_bookings * 100 for this combination. Note: deposit_type = 'Non Refund' shows a near-100% cancellation rate, identified as a known dataset artifact rather than a genuine business signal."
+
+      - name: share_of_hotel_bookings_percent
+        description: "Share, in percent, that this combination's total_nb_bookings represents out of all bookings for the same hotel, computed via a window function partitioned by hotel."

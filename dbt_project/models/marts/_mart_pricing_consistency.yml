@@ -5,7 +5,37 @@ models:
     description: "Booking-level mart computing ADR deviation from the median of its hotel + season + customer_type group, to surface pricing inconsistencies for revenue management review."
     columns:
 
+      - name: booking_id
+        description: "Technical row identifier, inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: hotel
+        description: "Type of hotel the booking was made for. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: season
+        description: "Seasonality classification (High/Low) for the booking's arrival month. Inherited from int_bookings_with_season."
+
+      - name: customer_type
+        description: "Booking classification based on the nature of the reservation. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: meal
+        description: "Meal plan associated with the booking. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: booking_lead_time_days
+        description: "Number of days between the booking date and the arrival date. Inherited from stg_bookings. See stg_bookings.yml."
+
+      - name: average_daily_rate
+        description: "Average daily rate actually charged for the booking. Inherited from stg_bookings. See stg_bookings.yml."
+
       - name: median_adr_by_group
         description: "Median average_daily_rate for the booking's hotel + season + customer_type group, computed via PERCENTILE_CONT. NULL would indicate a failed join against the group median calculation."
         tests:
           - not_null
+
+      - name: adr_diff_absolute
+        description: "Absolute difference between the booking's average_daily_rate and its group's median_adr_by_group, in currency units. Positive values indicate a rate above the group median."
+
+      - name: adr_diff_ratio
+        description: "Ratio of the booking's average_daily_rate to its group's median_adr_by_group (1.0 = exactly at the median)."
+
+      - name: adr_diff_percent
+        description: "Percentage deviation of the booking's average_daily_rate from its group's median_adr_by_group. Positive values indicate a rate above the group median, negative values a rate below it."
