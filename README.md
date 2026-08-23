@@ -1,4 +1,5 @@
 # Hotel Booking Pipeline
+  📊 [Explore the live dbt documentation](https://jbaptisteall.github.io/Hotel_Booking_Pipeline/)
 
 ```mermaid
 flowchart TD
@@ -149,9 +150,11 @@ Airflow runs as its own Dockerized stack
 the `hotel_pipeline_network` Docker network with the `hotel_postgres`
 container so tasks connect via the `docker` profile target
 (`profiles.yml`) instead of the host-mapped port used for local `dbt`
-runs. Scheduled every 2 hours (`0 */2 * * *`); DAGs are paused at creation,
-so a fresh deploy needs a manual unpause in the UI before it starts
-running. [Details →](docs/decisions.md#orchestration-airflow)
+runs. Validated with 4 successful runs on a 2-hour cron (`0 */2 * * *`) before
+being switched back to manual trigger (`schedule=None`) — no real
+freshness requirement on a portfolio project, so leaving it running
+continuously would serve no purpose. DAGs are paused at creation, so a
+fresh deploy needs a manual unpause in the UI before it starts running. [Details →](docs/decisions.md#orchestration-airflow)
 
 ## Note on secrets
 
